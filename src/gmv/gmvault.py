@@ -988,9 +988,13 @@ class GMVaulter(object):
         LOG.critical("%d emails to be fetched." % (total_nb_emails_to_process))
         
         nb_emails_processed = 0
-        
+
+        step = 30
+        new_data = None
+        rem_data = 0
+        todo = list(imap_ids)
+
         for the_id in imap_ids:
-            
             try:
                 
                 gid = None
@@ -998,8 +1002,12 @@ class GMVaulter(object):
                 LOG.debug("\nProcess imap id %s" % ( the_id ))
                 
                 #get everything but data
-                new_data = self.src.fetch(the_id, imap_utils.GIMAPFetcher.GET_ALL_BUT_DATA )
-                
+                rem_data -= 1
+                if rem_data <= 0:
+                    want, todo = todo[:step], todo[step:]
+                    new_data = self.src.fetch(want, imap_utils.GIMAPFetcher.GET_ALL_BUT_DATA )
+                    rem_data = step
+
                 if new_data.get(the_id, None):
                     
                     gid = new_data[the_id][imap_utils.GIMAPFetcher.GMAIL_ID]
