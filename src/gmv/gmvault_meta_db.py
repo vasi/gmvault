@@ -1,20 +1,24 @@
 import string
 import sqlite3
-from gmvault import GmailStorer
+from gmvault import GmailStorerFS
 
 # TODO:
 #   - quarantine
 #   - caching?
 
-class GmailStorerDB(GmailStorer):
-    def __init__(self, file):
-        self.conn = sqlite3.connect(file)
-        self.conn.row_factory = sqlite3.Row
+class GmailStorerDB(GmailStorerFS):
+    META_DB_FNAME = 'metadata.sqlite3'
+    
+    def __init__(self, a_storage_dir, encrypt_data = False):
+        super(GmailStorerDB, self).__init__(a_storage_dir, encrypt_data)
+        self._meta_db = '%s/%s' % (self._db_dir, self.META_DB_FNAME)
+        self._conn = sqlite3.connect(self._meta_db)
+        self._conn.row_factory = sqlite3.Row
         self._create_tables()
     
     def _create_tables(self):
         # NOTE: Flags are denormalized, space separated
-        self.conn.executescript('''
+        self._conn.executescript('''
             CREATE TABLE IF NOT EXISTS messages (
                 gm_id INTEGER PRIMARY KEY,
                 flags TEXT,
@@ -36,13 +40,13 @@ class GmailStorerDB(GmailStorer):
         ''')
     
     def _delete_metadata(self, gm_id, the_dir):
-        self.conn.execute('DELETE FROM messages WHERE gm_id = ?', (gm_id,))
-        self.conn.execute('DELETE FROM message_labels WHERE message = ?',
+        self._conn.execute('DELETE FROM messages WHERE gm_id = ?', (gm_id,))
+        self._conn.execute('DELETE FROM message_labels WHERE message = ?',
             (gm_id,))
-        self.conn.commit()
+        self._conn.commit()
     
     def _bury_metadata_obj(self, local_dir, obj):
-        cur = self.conn.cursor()
+        cur = self._conn.cursor()
         gm_id = obj[self.ID_K]
         
         cur.execute('REPLACE INTO messages VALUES (?,?,?,?,?,?)', (
@@ -67,10 +71,10 @@ class GmailStorerDB(GmailStorer):
         cur.executemany('INSERT INTO message_labels VALUES (?,?)',
             [(gm_id, l) for l in labels])
         
-        self.conn.commit()
+        self._conn.commit()
     
     def _unbury_metadata_obj(self, a_id, a_id_dir):
-        cur = self.conn.cursor()
+        cur = self._conn.cursor()
         
         cur.execute('''SELECT name FROM message_labels JOIN labels WHERE
             label = label_id AND message = ?''', (a_id,))
@@ -82,35 +86,36 @@ class GmailStorerDB(GmailStorer):
         obj[self.LABELS_K] = labels
         return obj
 
-import sys
-db = GmailStorerDB(sys.argv[1])
+if __name__ == '__main__':
+    import sys
+    db = GmailStorerDB(sys.argv[1])
 
-db._bury_metadata_obj(None, {
-    "msg_id": "CAJnB4vBb5eS43vQPSphQiyo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
-    "gm_id": 1412679471642059988,
-    "labels": ["\\Inbox", "\\Important", "Perso/Foo"],
-    "thread_ids": 1412630003922319997,
-    "flags": ["\\Seen", "\\Flagged"],
-    "internal_date": 1347243329,
-    "subject": "Re: some subject\r"
-})
-db._bury_metadata_obj(None, {
-    "msg_id": "CAJnB4vBb5eS43vQPSphQizo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
-    "gm_id": 1412679471642012345,
-    "labels": ["\\Inbox", "Test"],
-    "thread_ids": 1412630003922318997,
-    "flags": [],
-    "internal_date": 1347243328,
-    "subject": "Re: another subject\r"
-})
-db._bury_metadata_obj(None, {
-    "msg_id": "CAJnB4vBb5eS43vQPSphQiyo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
-    "gm_id": 1412679471642059988,
-    "labels": ["\\Inbox", "\\Important", "Perso/Foo", "Added"],
-    "thread_ids": 1412630003922319997,
-    "flags": ["\\Seen", "\\Flagged"],
-    "internal_date": 1347243329,
-    "subject": "Re: some subject\r"
-})
+    db._bury_metadata_obj(None, {
+        "msg_id": "CAJnB4vBb5eS43vQPSphQiyo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
+        "gm_id": 1412679471642059988,
+        "labels": ["\\Inbox", "\\Important", "Perso/Foo"],
+        "thread_ids": 1412630003922319997,
+        "flags": ["\\Seen", "\\Flagged"],
+        "internal_date": 1347243329,
+        "subject": "Re: some subject\r"
+    })
+    db._bury_metadata_obj(None, {
+        "msg_id": "CAJnB4vBb5eS43vQPSphQizo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
+        "gm_id": 1412679471642012345,
+        "labels": ["\\Inbox", "Test"],
+        "thread_ids": 1412630003922318997,
+        "flags": [],
+        "internal_date": 1347243328,
+        "subject": "Re: another subject\r"
+    })
+    db._bury_metadata_obj(None, {
+        "msg_id": "CAJnB4vBb5eS43vQPSphQiyo8oGQGtmDsMgFKZq9Pk1L1W6uZDA@mail.gmail.com",
+        "gm_id": 1412679471642059988,
+        "labels": ["\\Inbox", "\\Important", "Perso/Foo", "Added"],
+        "thread_ids": 1412630003922319997,
+        "flags": ["\\Seen", "\\Flagged"],
+        "internal_date": 1347243329,
+        "subject": "Re: some subject\r"
+    })
 
-print db._unbury_metadata_obj(1412679471642059988, None)
+    print db._unbury_metadata_obj(1412679471642059988, None)

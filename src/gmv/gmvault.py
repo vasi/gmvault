@@ -38,7 +38,7 @@ import credential_utils
 
 LOG = log_utils.LoggerFactory.get_logger('gmvault')
             
-class GmailStorer(object): #pylint:disable=R0902
+class GmailStorerFS(object): #pylint:disable=R0902
     '''
        Store emails on disk
     ''' 
@@ -607,6 +607,9 @@ class GmailStorer(object): #pylint:disable=R0902
                 os.remove(cryp_comp_data_p)   
             
             self._delete_metadata(a_id, the_dir)
+
+from gmvault_meta_db import GmailStorerDB
+GmailStorer = GmailStorerDB
    
 class GMVaulter(object):
     """
