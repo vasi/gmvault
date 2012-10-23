@@ -325,16 +325,6 @@ class GmailStorer(object): #pylint:disable=R0902
              email_info: metadata info
              local_dir : intermdiary dir (month dir)
         """
-        if local_dir:
-            the_dir = '%s/%s' % (self._db_dir, local_dir)
-            gmvault_utils.makedirs(the_dir)
-        else:
-            the_dir = self._db_dir
-         
-        meta_path = self.METADATA_FNAME % (the_dir, email_info[imap_utils.GIMAPFetcher.GMAIL_ID])
-       
-        meta_desc = open(meta_path, 'w')
-        
         # parse header fields to extract subject and msgid
         subject, msgid = self.parse_header_fields(email_info[imap_utils.GIMAPFetcher.IMAP_HEADER_FIELDS_KEY])
         
@@ -356,12 +346,21 @@ class GmailStorer(object): #pylint:disable=R0902
                      self.MSGID_K      : msgid
                    }
         
+        self._bury_metadata_obj(local_dir, meta_obj)
+        return email_info[imap_utils.GIMAPFetcher.GMAIL_ID]
+
+    def _bury_metadata_obj(self, local_dir, meta_obj):
+        if local_dir:
+            the_dir = '%s/%s' % (self._db_dir, local_dir)
+            gmvault_utils.makedirs(the_dir)
+        else:
+            the_dir = self._db_dir
+        meta_path = self.METADATA_FNAME % (the_dir, meta_obj[self.ID_K])
+        meta_desc = open(meta_path, 'w')
         json.dump(meta_obj, meta_desc, ensure_ascii = False)
         
         meta_desc.flush()
         meta_desc.close()
-         
-        return email_info[imap_utils.GIMAPFetcher.GMAIL_ID]
     
     def bury_chat(self, chat_info, local_dir = None, compress = False):   
         """
@@ -430,12 +429,7 @@ class GmailStorer(object): #pylint:disable=R0902
                      self.MSGID_K      : msgid
                    }
         
-        meta_desc = open(self.METADATA_FNAME % (the_dir, email_info[imap_utils.GIMAPFetcher.GMAIL_ID]), 'w')
-        
-        json.dump(meta_obj, meta_desc, ensure_ascii = False)
-        
-        meta_desc.flush()
-        meta_desc.close()
+        self._bury_metadata_obj(local_dir, meta_obj)
         
         data_desc.flush()
         data_desc.close()
@@ -566,9 +560,7 @@ class GmailStorer(object): #pylint:disable=R0902
         if not a_id_dir:
             a_id_dir = self.get_directory_from_id(a_id)
         
-        meta_fd = self._get_metadata_file_from_id(a_id_dir, a_id)
-    
-        metadata = json.load(meta_fd)
+        metadata = self._unbury_metadata_obj(a_id, a_id_dir)
         
         metadata[self.INT_DATE_K] =  gmvault_utils.e2datetime(metadata[self.INT_DATE_K])
         
@@ -576,6 +568,12 @@ class GmailStorer(object): #pylint:disable=R0902
         # returns a num when the label is a number (ie. '00000')
         metadata[self.LABELS_K] = [ str(elem) for elem in  metadata[self.LABELS_K] ]
         
+        return metadata
+    
+    def _unbury_metadata_obj(self, a_id, a_id_dir):
+        meta_fd = self._get_metadata_file_from_id(a_id_dir, a_id)
+        
+        metadata = json.load(meta_fd)
         return metadata
     
     def delete_emails(self, emails_info, msg_type):
