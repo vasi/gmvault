@@ -576,6 +576,11 @@ class GmailStorer(object): #pylint:disable=R0902
         metadata = json.load(meta_fd)
         return metadata
     
+    def _delete_metadata(self, a_id, the_dir):
+        metadata_p  = self.METADATA_FNAME % (the_dir, a_id)
+        if os.path.exists(metadata_p):
+            os.remove(metadata_p)
+    
     def delete_emails(self, emails_info, msg_type):
         """
            Delete all emails and metadata with ids
@@ -593,8 +598,6 @@ class GmailStorer(object): #pylint:disable=R0902
             comp_data_p = '%s.gz' % (data_p)
             cryp_comp_data_p = '%s.crypt.gz' % (data_p)
             
-            metadata_p  = self.METADATA_FNAME % (the_dir, a_id)
-            
             #delete files if they exists
             if os.path.exists(data_p):
                 os.remove(data_p)
@@ -603,8 +606,7 @@ class GmailStorer(object): #pylint:disable=R0902
             elif os.path.exists(cryp_comp_data_p):
                 os.remove(cryp_comp_data_p)   
             
-            if os.path.exists(metadata_p):
-                os.remove(metadata_p)
+            self._delete_metadata(a_id, the_dir)
    
 class GMVaulter(object):
     """

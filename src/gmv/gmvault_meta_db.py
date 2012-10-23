@@ -3,7 +3,6 @@ import sqlite3
 from gmvault import GmailStorer
 
 # TODO:
-#   - deletion
 #   - quarantine
 #   - caching?
 
@@ -36,34 +35,37 @@ class GmailStorerDB(GmailStorer):
                 ON message_labels (message); 
         ''')
     
+    def _delete_metadata(self, gm_id, the_dir):
+        self.conn.execute('DELETE FROM messages WHERE gm_id = ?', (gm_id,))
+        self.conn.execute('DELETE FROM message_labels WHERE message = ?',
+            (gm_id,))
+        self.conn.commit()
+    
     def _bury_metadata_obj(self, local_dir, obj):
         cur = self.conn.cursor()
-        
         gm_id = obj[self.ID_K]
-        cur.execute('DELETE FROM messages WHERE gm_id = ?', (gm_id,))
-        cur.execute('DELETE FROM message_labels WHERE message = ?', (gm_id,))
         
-        flags = string.join(obj[self.FLAGS_K], ' ')
-        cur.execute('INSERT INTO messages VALUES (?,?,?,?,?,?)', (
+        cur.execute('REPLACE INTO messages VALUES (?,?,?,?,?,?)', (
             gm_id,
-            flags,
+            string.join(obj[self.FLAGS_K], ' '),
             obj[self.THREAD_IDS_K],
             obj[self.INT_DATE_K],
             obj[self.SUBJECT_K],
             obj[self.MSGID_K]
         ))
-        msg = cur.lastrowid
         
+        cur.execute('DELETE FROM message_labels WHERE message = ?', (gm_id,))
         labels = []
         for label in obj[self.LABELS_K]:
             cur.execute('SELECT label_id FROM labels WHERE name = ?', (label,))
             row = cur.fetchone()
             if row:
-                labels.append([msg, row[0]])
+                labels.append(row[0])
             else:
                 cur.execute('INSERT INTO labels VALUES (NULL, ?)', (label,))
-                labels.append([msg, cur.lastrowid])
-        cur.executemany('INSERT INTO message_labels VALUES (?,?)', labels)
+                labels.append(cur.lastrowid)
+        cur.executemany('INSERT INTO message_labels VALUES (?,?)',
+            [(gm_id, l) for l in labels])
         
         self.conn.commit()
     
