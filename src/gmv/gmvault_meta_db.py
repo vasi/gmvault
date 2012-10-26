@@ -1,3 +1,4 @@
+import types
 import json
 import sqlite3
 from gmvault import GmailStorerFS
@@ -15,6 +16,7 @@ class GmailStorerDB(GmailStorerFS):
         self._conn = sqlite3.connect(self._meta_db)
         self._conn.row_factory = sqlite3.Row
         self._create_tables()
+        self._init_index('labels', 'subject')
     
     def _create_tables(self):
         self._conn.executescript('''
@@ -22,10 +24,56 @@ class GmailStorerDB(GmailStorerFS):
                 gm_id INTEGER PRIMARY KEY,
 				data TEXT
             );
+            CREATE TABLE IF NOT EXISTS fields (
+                field TEXT PRIMARY KEY,
+                force INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS indexed (
+                gm_id INTEGER,
+                field TEXT,
+                value TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_message ON indexed (gm_id, field);
+            CREATE INDEX IF NOT EXISTS idx_value ON indexed (field, value);
         ''')
+    
+    def _init_index(self, *indices):
+        self._conn.executemany('INSERT OR IGNORE INTO fields VALUES (?, 1)',
+            [(i,) for i in indices])
+        
+        self._indexes = []
+        force = []
+        cur = self._conn.cursor()
+        for row in cur.execute('SELECT * FROM fields'):
+            field = row['field']
+            self._indexes.append(field)
+            if row['force'] > 0:
+                force.append(field)
+        
+        if force:
+            for row in cur.execute('SELECT data FROM messages'):
+                self._index_metadata_obj(json.loads(row['data']), force)
+        
+        self._conn.execute('UPDATE fields SET force = 0')
+        self._conn.commit()
+    
+    def _indexed_values(self, v):
+        '''For a list, index each item. For other types, index the value'''
+        if hasattr(v, '__iter__') and not isinstance(v, types.StringTypes):
+            return v
+        return (v,)
+    
+    def _index_metadata_obj(self, obj, fields):
+        gm_id = obj[self.ID_K]
+        rows = []
+        for f in fields:
+            for v in self._indexed_values(obj[f]):
+                rows.append((gm_id, f, v))
+        self._conn.executemany('INSERT INTO indexed VALUES (?, ?, ?)', rows)
     
     def _delete_metadata(self, gm_id, the_dir):
         self._conn.execute('DELETE FROM messages WHERE gm_id = ?', (gm_id,))
+        self._conn.execute('DELETE FROM indexed WHERE gm_id = ?', (gm_id,))
         self._conn.commit()
     
     def _bury_metadata_obj(self, local_dir, obj):
@@ -33,6 +81,8 @@ class GmailStorerDB(GmailStorerFS):
         self._conn.execute('REPLACE INTO messages VALUES (?,?)', (
             obj[self.ID_K], json.dumps(obj, ensure_ascii = False)
         ))
+        self._conn.execute('DELETE FROM indexed WHERE gm_id = ?', (gm_id,))
+        self._index_metadata_obj(obj, self._indexes)
         self._conn.commit()
     
     def _unbury_metadata_obj(self, a_id, a_id_dir):
