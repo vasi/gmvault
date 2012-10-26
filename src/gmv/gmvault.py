@@ -253,30 +253,29 @@ class GmailStorerFS(object): #pylint:disable=R0902
         else:
             return None, None
     
+    def _dir_ids(self, subdir = None, ignore = []):
+        the_dir = self._db_dir
+        if subdir:
+            the_dir = '%s/%s' % (the_dir, subdir)
+        if os.path.exists(the_dir):
+            for path in gmvault_utils.ordered_dirwalk(the_dir, "*.meta", ignore):
+                fdir, fname = os.path.split(path)
+                yield (long(os.path.splitext(fname)[0]), os.path.basename(fdir))
+    
+    def _dirs(self, ignore = []):
+        return gmvault_utils.get_all_dirs_under(self._db_dir, ignore)
+    
     def get_all_chats_gmail_ids(self):
         """
            Get only chats dirs 
         """
         # first create a normal dir and sort it below with an OrderedDict
         # beware orderedDict preserve order by insertion and not by key order
-        gmail_ids = {}
-        
-        chat_dir = '%s/%s' % (self._db_dir, self.CHATS_AREA)
-        if os.path.exists(chat_dir):
-            the_iter = gmvault_utils.ordered_dirwalk(chat_dir, "*.meta")
-        
-            #get all ids
-            for filepath in the_iter:
-                directory, fname = os.path.split(filepath)
-                gmail_ids[long(os.path.splitext(fname)[0])] = os.path.basename(directory)
-
-            #sort by key 
-            #used own orderedDict to be compliant with version 2.5
-            gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids.items(), key=lambda t: t[0]))
+        gmail_ids = self._dir_ids(self.CHATS_AREA)
+        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids, key=lambda t: t[0]))
         
         return gmail_ids
-        
-        
+    
     def get_all_existing_gmail_ids(self, pivot_dir = None, ignore_sub_dir = ['chats']): #pylint:disable=W0102
         """
            get all existing gmail_ids from the database within the passed month 
@@ -284,30 +283,24 @@ class GmailStorerFS(object): #pylint:disable=R0902
         """
         # first create a normal dir and sort it below with an OrderedDict
         # beware orderedDict preserve order by insertion and not by key order
-        gmail_ids = {}
+        gmail_ids = []
         
         if pivot_dir == None:
-            #the_iter = gmvault_utils.dirwalk(self._db_dir, "*.meta")
-            the_iter = gmvault_utils.ordered_dirwalk(self._db_dir, "*.meta", ignore_sub_dir)
+            gmail_ids = self._dir_ids(ignore = ignore_sub_dir)
         else:
             
             # get all yy-mm dirs to list
-            dirs = gmvault_utils.get_all_directories_posterior_to(pivot_dir, gmvault_utils.get_all_dirs_under(self._db_dir, ignore_sub_dir))
+            dirs = gmvault_utils.get_all_directories_posterior_to(pivot_dir, self._dirs())
             
             #create all iterators and chain them to keep the same interface
             #iter_dirs = [gmvault_utils.dirwalk('%s/%s' % (self._db_dir, the_dir), "*.meta") for the_dir in dirs]
-            iter_dirs = [gmvault_utils.ordered_dirwalk('%s/%s' % (self._db_dir, the_dir), "*.meta", ignore_sub_dir) for the_dir in dirs]
+            iter_dirs = [self._dir_ids(the_dir, ignore_sub_dir) for the_dir in dirs]
             
-            the_iter = itertools.chain.from_iterable(iter_dirs)
+            gmail_ids = itertools.chain.from_iterable(iter_dirs)
         
-        #get all ids
-        for filepath in the_iter:
-            directory, fname = os.path.split(filepath)
-            gmail_ids[long(os.path.splitext(fname)[0])] = os.path.basename(directory)
-
         #sort by key 
         #used own orderedDict to be compliant with version 2.5
-        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids.items(), key=lambda t: t[0]))
+        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids, key=lambda t: t[0]))
         
         return gmail_ids
     

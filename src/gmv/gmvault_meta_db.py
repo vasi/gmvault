@@ -16,14 +16,16 @@ class GmailStorerDB(GmailStorerFS):
         self._conn = sqlite3.connect(self._meta_db)
         self._conn.row_factory = sqlite3.Row
         self._create_tables()
-        self._init_index('labels', 'subject')
+        self._init_index('labels')
     
     def _create_tables(self):
         self._conn.executescript('''
             CREATE TABLE IF NOT EXISTS messages (
                 gm_id INTEGER PRIMARY KEY,
+                dir TEXT,
 				data TEXT
             );
+            CREATE INDEX IF NOT EXISTS message_dir ON messages (dir);
             CREATE TABLE IF NOT EXISTS fields (
                 field TEXT PRIMARY KEY,
                 force INTEGER
@@ -78,8 +80,9 @@ class GmailStorerDB(GmailStorerFS):
     
     def _bury_metadata_obj(self, local_dir, obj):
         gm_id = obj[self.ID_K]
-        self._conn.execute('REPLACE INTO messages VALUES (?,?)', (
-            obj[self.ID_K], json.dumps(obj, ensure_ascii = False)
+        self._conn.execute('REPLACE INTO messages VALUES (?,?,?)', (
+            obj[self.ID_K], local_dir,
+            json.dumps(obj, local_dir, ensure_ascii = False)
         ))
         self._conn.execute('DELETE FROM indexed WHERE gm_id = ?', (gm_id,))
         self._index_metadata_obj(obj, self._indexes)
@@ -89,6 +92,40 @@ class GmailStorerDB(GmailStorerFS):
         cur = self._conn.cursor()
         cur.execute('SELECT data FROM messages WHERE gm_id = ?', (a_id,))
         return json.loads(cur.fetchone()['data'])
+    
+    
+    # FIXME: Could use some refactoring
+    def get_directory_from_id(self, a_id, a_local_dir = None):
+        cur = self._conn.cursor()
+        cur.execute('SELECT dir FROM messages WHERE gm_id = ?', (a_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = row['dir']
+        if a_local_dir and a_local_dir != d:
+            return None
+        return d
+    def _dirs(self, ignore = []):
+        cur = self._conn.cursor()
+        cur.execute('SELECT DISTINCT dir FROM messages ORDER BY dir ASC')
+        ds = [r[0] for r in cur.fetchall()]
+        return [d for d in ds if d not in ignore]
+    def _dir_ids(self, subdir = None, ignore = []):
+        stmt = 'SELECT gm_id, dir FROM messages'
+        where = []
+        param = []
+        if subdir:
+            where.append('dir = ?')
+            param.append(subdir)
+        if ignore:
+            where.append('dir NOT IN (' + ','.join('?' * len(ignore)) + ')')
+            param.extend(ignore)
+        if where:
+            stmt += ' WHERE ' + ' AND '.join(where)
+        stmt += ' ORDER BY dir ASC, gm_id ASC'
+        
+        for row in self._conn.execute(stmt, param):
+            yield (row['gm_id'], row['dir'])
 
 if __name__ == '__main__':
     import sys
