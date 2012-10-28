@@ -1369,7 +1369,7 @@ class GMVaulter(object):
             LOG.critical("Start emails restoration.\n")
             
             if start_time:
-                LOG.critical("Quick mode activated. Will only restore all emails since %s.\n" % (pivot_dir))
+                LOG.critical("Quick mode activated. Will only restore all emails since %s.\n" % (start_time))
             
             self.restore_emails(start_time, extra_labels, restart)
         else:

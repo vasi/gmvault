@@ -2,7 +2,9 @@ import types
 import collections
 import json
 import sqlite3
+
 from gmvault import GmailStorerFS
+import gmvault_utils
 
 # TODO:
 #   - quarantine
@@ -108,7 +110,7 @@ class GmailStorerDB(GmailStorerFS):
         return None
     
     def _get_ids(self, category, start_time = None):
-        stmt = 'SELECT DISTINCT gm_id, data FROM messages %(join)s WHERE %(where)s'
+        stmt = 'SELECT DISTINCT messages.gm_id, data FROM messages %(join)s WHERE %(where)s'
         join = ['JOIN indexed AS cat USING (gm_id)']
         where = ['cat.field = ?', 'cat.value = ?']
         params = [self.CATEGORY_K, category]
