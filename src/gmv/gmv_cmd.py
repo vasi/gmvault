@@ -538,11 +538,9 @@ class GMVaultLauncher(object):
             today = datetime.date.today()
             begin = today - datetime.timedelta(gmvault_utils.get_conf_defaults().getint("Restore", "quick_days", 8))
             
-            starting_dir = gmvault_utils.get_ym_from_datetime(begin)
-            
             #call restore
             labels = [args['label']] if args['label'] else []
-            restorer.restore(pivot_dir = starting_dir, extra_labels = labels, restart = args['restart'], emails_only = args['emails_only'], chats_only = args['chats_only'])
+            restorer.restore(start_time = begin, extra_labels = labels, restart = args['restart'], emails_only = args['emails_only'], chats_only = args['chats_only'])
         
         else:
             raise ValueError("Unknown synchronisation mode %s. Please use full (default), quick.")

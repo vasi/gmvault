@@ -276,7 +276,7 @@ class GmailStorerFS(object): #pylint:disable=R0902
         
         return gmail_ids
     
-    def get_all_existing_gmail_ids(self, pivot_dir = None, ignore_sub_dir = ['chats']): #pylint:disable=W0102
+    def get_all_existing_gmail_ids(self, start_time = None, ignore_sub_dir = ['chats']): #pylint:disable=W0102
         """
            get all existing gmail_ids from the database within the passed month 
            and all posterior months
@@ -285,11 +285,12 @@ class GmailStorerFS(object): #pylint:disable=R0902
         # beware orderedDict preserve order by insertion and not by key order
         gmail_ids = []
         
-        if pivot_dir == None:
+        if start_time == None:
             gmail_ids = self._dir_ids(ignore = ignore_sub_dir)
         else:
             
             # get all yy-mm dirs to list
+            pivot_dir = gmvault_utils.get_ym_from_datetime(start_time)
             dirs = gmvault_utils.get_all_directories_posterior_to(pivot_dir, self._dirs())
             
             #create all iterators and chain them to keep the same interface
@@ -1376,7 +1377,7 @@ class GMVaulter(object):
             
         return new_gmail_ids_info 
            
-    def restore(self, pivot_dir = None, extra_labels = [], restart = False, emails_only = False, chats_only = False): #pylint:disable=W0102
+    def restore(self, start_time = None, extra_labels = [], restart = False, emails_only = False, chats_only = False): #pylint:disable=W0102
         """
            Restore emails in a gmail account
         """
@@ -1386,10 +1387,10 @@ class GMVaulter(object):
             # backup emails
             LOG.critical("Start emails restoration.\n")
             
-            if pivot_dir:
+            if start_time:
                 LOG.critical("Quick mode activated. Will only restore all emails since %s.\n" % (pivot_dir))
             
-            self.restore_emails(pivot_dir, extra_labels, restart)
+            self.restore_emails(start_time, extra_labels, restart)
         else:
             LOG.critical("Skip emails restoration.\n")
         
@@ -1641,7 +1642,7 @@ class GMVaulter(object):
         return self.error_report
         
         
-    def restore_emails(self, pivot_dir = None, extra_labels = [], restart = False):
+    def restore_emails(self, start_time = None, extra_labels = [], restart = False):
         """
            restore emails in a gmail account
         """
@@ -1653,7 +1654,7 @@ class GMVaulter(object):
         LOG.critical("Read email info from %s gmvault-db." % (self.db_root_dir))
         
         #get gmail_ids from db
-        db_gmail_ids_info = gstorer.get_all_existing_gmail_ids(pivot_dir)
+        db_gmail_ids_info = gstorer.get_all_existing_gmail_ids(start_time)
         
         LOG.critical("Total number of elements to restore %s." % (len(db_gmail_ids_info.keys())))
         
