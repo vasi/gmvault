@@ -62,6 +62,7 @@ class GmailStorerDB(GmailStorerFS):
         
         self._conn.execute('UPDATE fields SET force = 0')
         self._conn.commit()
+        self._conn.execute('ANALYZE indexed')
     
     def _indexed_values(self, v):
         '''For a list, index each item. For other types, index the value'''
