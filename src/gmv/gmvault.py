@@ -72,6 +72,9 @@ class GmailStorerFS(object): #pylint:disable=R0902
     EMAIL_OWNER                = '.owner_account.info'
     GMVAULTDB_VERSION          = '.gmvault_db_version.info'   
     
+    CATEGORY_EMAIL  = 'email'
+    CATEGORY_CHAT   = 'chat'
+    
     def __init__(self, a_storage_dir, encrypt_data = False):
         """
            Store on disks
@@ -253,57 +256,35 @@ class GmailStorerFS(object): #pylint:disable=R0902
         else:
             return None, None
     
-    def _dir_ids(self, subdir = None, ignore = []):
-        the_dir = self._db_dir
-        if subdir:
-            the_dir = '%s/%s' % (the_dir, subdir)
-        if os.path.exists(the_dir):
-            for path in gmvault_utils.ordered_dirwalk(the_dir, "*.meta", ignore):
-                fdir, fname = os.path.split(path)
-                yield (long(os.path.splitext(fname)[0]), os.path.basename(fdir))
+    def _get_ids(self, category, start_time = None):
+        dirs = []
+        if category == self.CATEGORY_CHAT:
+            dirs = [self.CHATS_AREA]
+        else:
+            dirs = gmvault_utils.get_all_dirs_under(self._db_dir, [self.CHATS_AREA])
+            if start_time:
+                pivot_dir = gmvault_utils.get_ym_from_datetime(start_time)
+                dirs = gmvault_utils.get_all_directories_posterior_to(pivot_dir, dirs)
+        
+        for subdir in dirs:
+            the_dir = '%s/%s' % (self._db_dir, subdir)
+            if os.path.exists(the_dir):
+                for path in gmvault_utils.ordered_dirwalk(the_dir, "*.meta"):
+                    fdir, fname = os.path.split(path)
+                    yield (long(os.path.splitext(fname)[0]), os.path.basename(fdir))
     
-    def _dirs(self, ignore = []):
-        return gmvault_utils.get_all_dirs_under(self._db_dir, ignore)
+    def _id_dict(self, gen):
+        return collections_utils.OrderedDict(sorted(gen, key=lambda t: t[0]))
     
     def get_all_chats_gmail_ids(self):
-        """
-           Get only chats dirs 
-        """
-        # first create a normal dir and sort it below with an OrderedDict
-        # beware orderedDict preserve order by insertion and not by key order
-        gmail_ids = self._dir_ids(self.CHATS_AREA)
-        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids, key=lambda t: t[0]))
-        
-        return gmail_ids
+        return self._id_dict(self._get_ids(self.CATEGORY_CHAT))
     
-    def get_all_existing_gmail_ids(self, start_time = None, ignore_sub_dir = ['chats']): #pylint:disable=W0102
+    def get_all_existing_gmail_ids(self, start_time = None): #pylint:disable=W0102
         """
            get all existing gmail_ids from the database within the passed month 
            and all posterior months
         """
-        # first create a normal dir and sort it below with an OrderedDict
-        # beware orderedDict preserve order by insertion and not by key order
-        gmail_ids = []
-        
-        if start_time == None:
-            gmail_ids = self._dir_ids(ignore = ignore_sub_dir)
-        else:
-            
-            # get all yy-mm dirs to list
-            pivot_dir = gmvault_utils.get_ym_from_datetime(start_time)
-            dirs = gmvault_utils.get_all_directories_posterior_to(pivot_dir, self._dirs())
-            
-            #create all iterators and chain them to keep the same interface
-            #iter_dirs = [gmvault_utils.dirwalk('%s/%s' % (self._db_dir, the_dir), "*.meta") for the_dir in dirs]
-            iter_dirs = [self._dir_ids(the_dir, ignore_sub_dir) for the_dir in dirs]
-            
-            gmail_ids = itertools.chain.from_iterable(iter_dirs)
-        
-        #sort by key 
-        #used own orderedDict to be compliant with version 2.5
-        gmail_ids = collections_utils.OrderedDict(sorted(gmail_ids, key=lambda t: t[0]))
-        
-        return gmail_ids
+        return self._id_dict(self._get_ids(self.CATEGORY_EMAIL, start_time))
     
     def bury_chat_metadata(self, email_info, local_dir = None):
         """
@@ -603,7 +584,7 @@ class GmailStorerFS(object): #pylint:disable=R0902
             self._delete_metadata(a_id, the_dir)
 
 from gmvault_meta_db import GmailStorerDB
-GmailStorer = GmailStorerDB
+GmailStorer = GmailStorerFS
    
 class GMVaulter(object):
     """
