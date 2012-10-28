@@ -1,4 +1,5 @@
 import types
+import collections
 import json
 import sqlite3
 from gmvault import GmailStorerFS
@@ -10,22 +11,23 @@ from gmvault import GmailStorerFS
 class GmailStorerDB(GmailStorerFS):
     META_DB_FNAME = 'metadata.sqlite3'
     
+    CATEGORY_K = 'category'
+    DIRECTORY_K = 'directory'
+    
     def __init__(self, a_storage_dir, encrypt_data = False):
         super(GmailStorerDB, self).__init__(a_storage_dir, encrypt_data)
         self._meta_db = '%s/%s' % (self._db_dir, self.META_DB_FNAME)
         self._conn = sqlite3.connect(self._meta_db)
         self._conn.row_factory = sqlite3.Row
         self._create_tables()
-        self._init_index('labels')
+        self._init_index(self.INT_DATE_K, self.CATEGORY_K)
     
     def _create_tables(self):
         self._conn.executescript('''
             CREATE TABLE IF NOT EXISTS messages (
                 gm_id INTEGER PRIMARY KEY,
-                dir TEXT,
 				data TEXT
             );
-            CREATE INDEX IF NOT EXISTS message_dir ON messages (dir);
             CREATE TABLE IF NOT EXISTS fields (
                 field TEXT PRIMARY KEY,
                 force INTEGER
@@ -79,10 +81,15 @@ class GmailStorerDB(GmailStorerFS):
         self._conn.commit()
     
     def _bury_metadata_obj(self, local_dir, obj):
+        if local_dir and local_dir.startswith(self.CHATS_AREA):
+            obj[self.CATEGORY_K] = self.CATEGORY_CHAT
+        else:
+            obj[self.CATEGORY_K] = self.CATEGORY_EMAIL
+        obj[self.DIRECTORY_K] = local_dir
+        
         gm_id = obj[self.ID_K]
-        self._conn.execute('REPLACE INTO messages VALUES (?,?,?)', (
-            obj[self.ID_K], local_dir,
-            json.dumps(obj, local_dir, ensure_ascii = False)
+        self._conn.execute('REPLACE INTO messages VALUES (?,?)', (
+            obj[self.ID_K], json.dumps(obj, local_dir, ensure_ascii = False)
         ))
         self._conn.execute('DELETE FROM indexed WHERE gm_id = ?', (gm_id,))
         self._index_metadata_obj(obj, self._indexes)
@@ -91,41 +98,30 @@ class GmailStorerDB(GmailStorerFS):
     def _unbury_metadata_obj(self, a_id, a_id_dir):
         cur = self._conn.cursor()
         cur.execute('SELECT data FROM messages WHERE gm_id = ?', (a_id,))
-        return json.loads(cur.fetchone()['data'])
-    
-    
-    # FIXME: Could use some refactoring
-    def get_directory_from_id(self, a_id, a_local_dir = None):
-        cur = self._conn.cursor()
-        cur.execute('SELECT dir FROM messages WHERE gm_id = ?', (a_id,))
         row = cur.fetchone()
-        if not row:
-            return None
-        d = row['dir']
-        if a_local_dir and a_local_dir != d:
-            return None
-        return d
-    def _dirs(self, ignore = []):
-        cur = self._conn.cursor()
-        cur.execute('SELECT DISTINCT dir FROM messages ORDER BY dir ASC')
-        ds = [r[0] for r in cur.fetchall()]
-        return [d for d in ds if d not in ignore]
-    def _dir_ids(self, subdir = None, ignore = []):
-        stmt = 'SELECT gm_id, dir FROM messages'
-        where = []
-        param = []
-        if subdir:
-            where.append('dir = ?')
-            param.append(subdir)
-        if ignore:
-            where.append('dir NOT IN (' + ','.join('?' * len(ignore)) + ')')
-            param.extend(ignore)
-        if where:
-            stmt += ' WHERE ' + ' AND '.join(where)
-        stmt += ' ORDER BY dir ASC, gm_id ASC'
+        return json.loads(row['data']) if row else None
+    
+    def get_directory_from_id(self, a_id, a_local_dir = None):
+        obj = self._unbury_metadata_obj(a_id, a_local_dir)
+        if obj:
+            return '%s/%s' % (self._db_dir, obj[self.DIRECTORY_K])
+        return None
+    
+    def _get_ids(self, category, start_time = None):
+        stmt = 'SELECT DISTINCT gm_id, data FROM messages %(join)s WHERE %(where)s'
+        join = ['JOIN indexed AS cat USING (gm_id)']
+        where = ['cat.field = ?', 'cat.value = ?']
+        params = [self.CATEGORY_K, category]
+        if start_time:
+            join.append('JOIN indexed AS date USING (gm_id)')
+            where.extend(['date.field = ?', 'date.value >= ?'])
+            begin = gmvault_utils.datetime2e(start_time)
+            params.extend([self.INT_DATE_K, begin])
+        stmt = stmt % { 'join': ' '.join(join), 'where': ' AND '.join(where) }
         
-        for row in self._conn.execute(stmt, param):
-            yield (row['gm_id'], row['dir'])
+        for row in self._conn.execute(stmt, params):
+            obj = json.loads(row['data'])
+            yield (obj[self.ID_K], obj[self.DIRECTORY_K])
 
 if __name__ == '__main__':
     import sys

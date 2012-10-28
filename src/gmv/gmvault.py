@@ -584,7 +584,7 @@ class GmailStorerFS(object): #pylint:disable=R0902
             self._delete_metadata(a_id, the_dir)
 
 from gmvault_meta_db import GmailStorerDB
-GmailStorer = GmailStorerFS
+GmailStorer = GmailStorerDB
    
 class GMVaulter(object):
     """
